@@ -226,9 +226,7 @@ module {
         RBTree.RBTree<Text, [Text]>(Text.compare);
     };
 
-    public func headersNew(host: Text): RBTree.RBTree<Text, [Text]> {
-        let headers = RBTree.RBTree<Text, [Text]>(Text.compare);
-        headers.put("Host", [host]);
-        headers
+    public func headersNew(): RBTree.RBTree<Text, [Text]> {
+        RBTree.RBTree<Text, [Text]>(Text.compare);
     };
 };

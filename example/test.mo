@@ -9,8 +9,9 @@ actor Test {
         : async (Text, [{name: Text; value: Text}])
     {
         // Remark: As test_port_443 test shows, port is included in default Host: iff it is included in the URL.
-        let headers = Http.headersNew("local.vporton.name" # port2);
+        let headers = Http.headersNew();
         // Add arbitrary headers for testing:
+        headers.put("Host", ["local.vporton.name" # port2]);
         headers.put("Content-Type", ["text/plain"]);
         headers.put("X-My", ["my"]);
         let res = await Call.callHttp(

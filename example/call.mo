@@ -20,7 +20,7 @@ actor HttpCaller {
     /// `inspect` is basically a query call and query calls can be forged by a malicious replica.
     public shared func checkRequest(hash: Blob): async () {
         if (not Http.checkHttpRequest(requestsChecker, hash)) {
-            Debug.trap("hacked HTTP request");
+            Debug.trap("hacked or timed out HTTP request");
         }
     };
 
