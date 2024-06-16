@@ -64,7 +64,7 @@ module {
         Sha256.fromBlob(#sha256, blob);
     };
 
-    type HttpRequestsChecker = {
+    public type HttpRequestsChecker = {
         hashes: BTree.BTree<Blob, Int>; // hash -> time
         times: BTree.BTree<Int, BTree.BTree<Blob, ()>>;
     };
