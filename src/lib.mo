@@ -1,26 +1,24 @@
 import Types "HttpTypes";
-import Itertools "mo:itertools/Iter";
 import Sha256 "mo:sha2/Sha256";
-import Text "mo:base/Text";
-import Iter "mo:base/Iter";
-import Debug "mo:base/Debug";
-import Blob "mo:base/Blob";
-import Buffer "mo:base/Buffer";
-import Char "mo:base/Char";
-import Nat8 "mo:base/Nat8";
-import Nat32 "mo:base/Nat32";
-import Time "mo:base/Time";
-import Int "mo:base/Int";
-import BTree "mo:stableheapbtreemap/BTree";
-import RBTree "mo:base/RBTree";
-import Option "mo:base/Option";
-import Array "mo:base/Array";
-import xNum "mo:xtended-numbers/NatX";
+import Text "mo:core/Text";
+import Iter "mo:core/Iter";
+import Blob "mo:core/Blob";
+import List "mo:core/List";
+import Char "mo:core/Char";
+import Nat8 "mo:core/Nat8";
+import Nat32 "mo:core/Nat32";
+import Time "mo:core/Time";
+import Int "mo:core/Int";
+import Map "mo:core/Map";
+import Array "mo:core/Array";
+import Runtime "mo:core/Runtime";
+import Set "mo:core/Set";
+import Nat "mo:core/Nat";
 
 module {
     public type HttpMethod = { #get; #post; #head };
 
-    public type HttpHeaders = RBTree.RBTree<Text, [Text]>;
+    public type HttpHeaders = Map.Map<Text, [Text]>;
 
     public type HttpRequest = {
         method: HttpMethod;
@@ -40,22 +38,22 @@ module {
     public func serializeHttpRequest(request: HttpRequest): Blob {
         let method = httpMethodToText(request.method);
         let headers_list = Iter.map<(Text, [Text]), Text>(
-            request.headers.entries(),
+            Map.entries(request.headers),
             func (entry: (Text, [Text])) { entry.0 # "\t" # Text.join("\t", entry.1.vals()); });
-        let headers_joined = Itertools.reduce<Text>(headers_list, func(a: Text, b: Text) {a # "\r" # b});
+        let headers_joined = Iter.reduce<Text>(headers_list, func(a: Text, b: Text) {a # "\r" # b});
         let headers_joined2 = switch (headers_joined) {
             case (?s) s;
             case null "";
         };
-        let the_rest = Itertools.skip(request.url.chars(), 8); // strip "https://"
-        let url = Text.fromIter(Itertools.skipWhile<Char>(the_rest, func (c: Char) { c != '/' }));
+        let the_rest = Iter.drop(request.url.chars(), 8); // strip "https://"
+        let url = Text.fromIter(Iter.dropWhile<Char>(the_rest, func (c: Char) { c != '/' }));
         let header_part = method # "\n" # url # "\n" # headers_joined2;
 
-        let result = Buffer.Buffer<Nat8>(header_part.size() + 1 + request.body.size());
-        result.append(Buffer.fromArray(Blob.toArray(Text.encodeUtf8(header_part))));
-        result.add(Nat8.fromNat(Nat32.toNat(Char.toNat32('\n'))));
-        result.append(Buffer.fromArray(Blob.toArray(request.body)));
-        Blob.fromArray(Buffer.toArray(result));
+        let result = List.empty<Nat8>();
+        List.addAll(result, Blob.toArray(Text.encodeUtf8(header_part)).vals());
+        List.add(result, Nat8.fromNat(Nat32.toNat(Char.toNat32('\n'))));
+        List.addAll(result, Blob.toArray(request.body).vals());
+        Blob.fromArray(List.toArray(result));
     };
 
     public func hashOfHttpRequest(request: HttpRequest): Blob {
@@ -64,31 +62,31 @@ module {
         Sha256.fromBlob(#sha256, blob);
     };
 
-    type HttpRequestsChecker = {
-        hashes: BTree.BTree<Blob, Int>; // hash -> time
-        times: BTree.BTree<Int, BTree.BTree<Blob, ()>>;
+    public type HttpRequestsChecker = {
+        hashes: Map.Map<Blob, Int>; // hash -> time
+        times: Map.Map<Int, Set.Set<Blob>>;
     };
 
     public func newHttpRequestsChecker(): HttpRequestsChecker {
         {
-            hashes = BTree.init(null);
-            times = BTree.init(null);
+            hashes = Map.empty();
+            times = Map.empty();
         }
     };
 
     private func deleteOldHttpRequests(checker: HttpRequestsChecker, params: {timeout: Nat}) {
         let threshold = Time.now() - params.timeout;
         label r loop {
-            let ?(minTime, hashes) = BTree.min(checker.times) else {
+            let ?(minTime, hashes) = Map.entries(checker.times).next() else {
                 break r;
             };
             if (minTime > threshold) {
                 break r;
             };
-            for ((hash, _) in BTree.entries(hashes)) {
-                ignore BTree.delete(checker.hashes, Blob.compare, hash);
+            for (hash in Set.values(hashes)) {
+                ignore Map.delete(checker.hashes, Blob.compare, hash);
             };
-            ignore BTree.delete(checker.times, Int.compare, minTime);
+            ignore Map.delete(checker.times, Int.compare, minTime);
         };
     };
 
@@ -96,16 +94,16 @@ module {
         deleteOldHttpRequests(checker, params);
 
         // If there is an old hash equal to this, first delete it to clean times:
-        switch (BTree.get(checker.hashes, Blob.compare, hash)) {
+        switch (Map.get(checker.hashes, Blob.compare, hash)) {
             case (?oldTime) {
-                let ?subtree = BTree.get(checker.times, Int.compare, oldTime) else {
-                    Debug.trap("programming error: zero times");
+                let ?subtree = Map.get(checker.times, Int.compare, oldTime) else {
+                    Runtime.trap("programming error: zero times");
                 };
-                ignore BTree.delete(checker.hashes, Blob.compare, hash);
-                if (BTree.size(subtree) == 1) {
-                    ignore BTree.delete(checker.times, Int.compare, oldTime);
+                ignore Map.delete(checker.hashes, Blob.compare, hash);
+                if (Set.size(subtree) == 1) {
+                    ignore Map.delete(checker.times, Int.compare, oldTime);
                 } else {
-                    ignore BTree.delete(subtree, Blob.compare, hash);
+                    ignore Set.delete(subtree, Blob.compare, hash);
                 };
             };
             case null {};
@@ -114,16 +112,16 @@ module {
         let now = Time.now();
 
         // Insert into two trees:
-        ignore BTree.insert(checker.hashes, Blob.compare, hash, now);
-        let subtree = switch (BTree.get(checker.times, Int.compare, now)) {
+        ignore Map.insert(checker.hashes, Blob.compare, hash, now);
+        let subtree = switch (Map.get(checker.times, Int.compare, now)) {
             case (?hashes) hashes;
             case (null) {
-                let hashes = BTree.init<Blob, ()>(null);
-                ignore BTree.insert(checker.times, Int.compare, now, hashes);
+                let hashes = Set.empty<Blob>();
+                ignore Map.insert(checker.times, Int.compare, now, hashes);
                 hashes;
             }
         };
-        ignore BTree.insert(subtree, Blob.compare, hash, ());
+        ignore Set.insert(subtree, Blob.compare, hash);
     };
 
     public func announceHttpRequest(checker: HttpRequestsChecker, request: HttpRequest, params: {timeout: Nat}) {
@@ -131,15 +129,15 @@ module {
     };
 
     public func checkHttpRequest(checker: HttpRequestsChecker, hash: Blob): Bool {
-        BTree.has(checker.hashes, Blob.compare, hash);
+        Map.containsKey(checker.hashes, Blob.compare, hash);
     };
 
     func headersToLowercase(headers: HttpHeaders) {
-        for (entry in headers.entries()) {
-            let lower = Text.toLowercase(entry.0);
+        for (entry in Map.entries(headers)) {
+            let lower = Text.toLower(entry.0);
             if (lower != entry.0) { // speed optimization
-                headers.delete(entry.0);
-                headers.put(lower, entry.1);
+                ignore Map.delete<Text, [Text]>(headers, Text.compare, entry.0);
+                ignore Map.insert(headers, Text.compare, lower, entry.1);
             }
         }
     };
@@ -151,21 +149,21 @@ module {
 
         // Some headers are added automatically, if missing. Provide them here, to match the hash:
         if (request.body != "") {
-            headers.put("content-length", [xNum.toText(Array.size(Blob.toArray(request.body)))]); // TODO: https://github.com/dfinity/motoko-base/issues/637
+            ignore Map.insert(headers, Text.compare, "content-length", [Nat.toText(Blob.size(request.body))]);
         };
-        if (Option.isNull(headers.get("user-agent"))) {
-            headers.put("user-agent", ["IC/for-Join-Proxy"]);
+        if (not Map.containsKey(headers, Text.compare, "user-agent")) {
+            ignore Map.insert(headers, Text.compare, "user-agent", ["IC/for-Join-Proxy"]);
         };
-        if (Option.isNull(headers.get("accept"))) {
-            headers.put("accept", ["*/*"]);
+        if (not Map.containsKey(headers, Text.compare, "accept")) {
+            ignore Map.insert(headers, Text.compare, "accept", ["*/*"]);
         };
-        if (Option.isNull(headers.get("host"))) {
-            let the_rest = Itertools.skip(request.url.chars(), 8); // strip "https://"
+        if (not Map.containsKey(headers, Text.compare, "host")) {
+            let the_rest = Iter.drop(request.url.chars(), 8); // strip "https://"
             // We don't worry if request.url really starts with "https://" because it will be caught later.
-            let host = Itertools.takeWhile<Char>(the_rest, func (c: Char) { c != '/' });
+            let host = Iter.takeWhile<Char>(the_rest, func (c: Char) { c != '/' });
             // As test_port_443 test shows, port is included in default Host: iff it is included in the URL.
             // So, we don't need add/remove :443 to match config on server.
-            headers.put("host", [Text.fromIter(host)]);
+            ignore Map.insert(headers, Text.compare, "host", [Text.fromIter(host)]);
         };
     };
 
@@ -174,19 +172,19 @@ module {
         checker: HttpRequestsChecker,
         request: HttpRequest,
         transform: ?Types.TransformRawResponseFunction,
-        params: {timeout: Nat; max_response_bytes: ?Nat64},
+        params: {cycles: Nat; timeout: Nat; max_response_bytes: ?Nat64},
     ): async* Types.HttpResponsePayload {
         modifyHttpRequest(request);
         announceHttpRequest(checker, request, params);
-        let http_headers = Buffer.Buffer<{name: Text; value: Text}>(0);
-        for ((name, values) in request.headers.entries()) { // ordered lexicographically
+        let http_headers = List.empty<{name: Text; value: Text}>();
+        for ((name, values) in Map.entries(request.headers)) { // ordered lexicographically
             for (value in values.vals()) {
-                http_headers.add({name; value});
+                List.add(http_headers, {name; value});
             }
         };
-        await Types.ic.http_request({
+        await (with cycles = params.cycles) Types.ic.http_request({
             method = request.method;
-            headers = Buffer.toArray(http_headers);
+            headers = List.toArray(http_headers);
             url = request.url;
             body = ?Blob.toArray(request.body);
             transform = transform;
@@ -196,24 +194,29 @@ module {
 
     public type WrappedHttpRequest = {
         method: HttpMethod;
-        headers: RBTree.Tree<Text, [Text]>;
+        headers: Map.Map<Text, [Text]>;
+        url: Text;
+        body: Blob;
+    };
+
+    public type SharedWrappedHttpRequest = {
+        method: HttpMethod;
+        headers: [(Text, [Text])];
         url: Text;
         body: Blob;
     };
 
     public func checkedHttpRequestWrapped(
         checker: HttpRequestsChecker,
-        request: WrappedHttpRequest,
+        request: SharedWrappedHttpRequest,
         transform: ?Types.TransformRawResponseFunction,
-        params: {timeout: Nat; max_response_bytes: ?Nat64},
+        params: {cycles: Nat; timeout: Nat; max_response_bytes: ?Nat64},
     ): async* Types.HttpResponsePayload {
-        let headers = _headersNew();
-        headers.unshare(request.headers);
         await* checkedHttpRequest(
             checker,
             {
                 method = request.method;
-                headers = headers;
+                headers = Map.fromIter(request.headers.vals(), Text.compare);
                 url = request.url;
                 body = request.body;
             },
@@ -222,13 +225,11 @@ module {
         );
     };
 
-    public func _headersNew(): RBTree.RBTree<Text, [Text]> {
-        RBTree.RBTree<Text, [Text]>(Text.compare);
+    public func _headersNew(): Map.Map<Text, [Text]> {
+        Map.empty<Text, [Text]>();
     };
 
-    public func headersNew(host: Text): RBTree.RBTree<Text, [Text]> {
-        let headers = RBTree.RBTree<Text, [Text]>(Text.compare);
-        headers.put("Host", [host]);
-        headers
+    public func headersNew(): Map.Map<Text, [Text]> {
+        Map.empty<Text, [Text]>();
     };
 };

@@ -1,18 +1,16 @@
 import Http "../src";
 import Types "../src/HttpTypes";
-import Blob "mo:base/Blob";
-import Debug "mo:base/Debug";
-import Cycles "mo:base/ExperimentalCycles";
-import Iter "mo:base/Iter";
+import Blob "mo:core/Blob";
+import Iter "mo:core/Iter";
+import Runtime "mo:core/Runtime";
 
 persistent actor HttpCaller {
     let requestsChecker = Http.newHttpRequestsChecker();
 
     public shared func callHttp(
-        request: Http.WrappedHttpRequest,
-        params: {timeout: Nat; max_response_bytes: ?Nat64; cycles: Nat}
+        request: Http.SharedWrappedHttpRequest,
+        params: {cycles: Nat; timeout: Nat; max_response_bytes: ?Nat64},
     ): async Types.HttpResponsePayload {
-        Cycles.add<system>(params.cycles);
         await* Http.checkedHttpRequestWrapped(requestsChecker, request, ?{ function = transform; context = "" }, params);
     };
 
@@ -20,7 +18,7 @@ persistent actor HttpCaller {
     /// `inspect` is basically a query call and query calls can be forged by a malicious replica.
     public shared func checkRequest(hash: Blob): async () {
         if (not Http.checkHttpRequest(requestsChecker, hash)) {
-            Debug.trap("hacked HTTP request");
+            Runtime.trap("hacked or timed out HTTP request");
         }
     };
 
@@ -40,7 +38,7 @@ persistent actor HttpCaller {
         // arg : Blob;
         msg : {
             #callHttp : () ->
-                (Http.WrappedHttpRequest,
+                (Http.SharedWrappedHttpRequest,
                 {cycles : Nat; max_response_bytes : ?Nat64; timeout : Nat});
             #checkRequest : () -> Blob;
             #transform : () -> Types.TransformArgs

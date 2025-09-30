@@ -1,6 +1,6 @@
 [package]
 name = "joinproxy"
-version = "1.0.0"
+version = "2.0.1"
 description = "Utilities to use IC together with Joining Proxy"
 repository = "https://github.com/vporton/joining-proxy-rust"
 keywords = [
@@ -15,7 +15,5 @@ keywords = [
 license = "MIT"
 
 [dependencies]
-itertools = "0.2.1"
 sha2 = "0.0.6"
-stableheapbtreemap = "1.5.0"
-xtended-numbers = "0.2.1"
+core = "1.0.0"
