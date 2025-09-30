@@ -1,5 +1,4 @@
 import Types "HttpTypes";
-import Itertools "mo:itertools/Iter";
 import Sha256 "mo:sha2/Sha256";
 import Text "mo:core/Text";
 import Iter "mo:core/Iter";
@@ -41,13 +40,13 @@ module {
         let headers_list = Iter.map<(Text, [Text]), Text>(
             Map.entries(request.headers),
             func (entry: (Text, [Text])) { entry.0 # "\t" # Text.join("\t", entry.1.vals()); });
-        let headers_joined = Itertools.reduce<Text>(headers_list, func(a: Text, b: Text) {a # "\r" # b});
+        let headers_joined = Iter.reduce<Text>(headers_list, func(a: Text, b: Text) {a # "\r" # b});
         let headers_joined2 = switch (headers_joined) {
             case (?s) s;
             case null "";
         };
-        let the_rest = Itertools.skip(request.url.chars(), 8); // strip "https://"
-        let url = Text.fromIter(Itertools.skipWhile<Char>(the_rest, func (c: Char) { c != '/' }));
+        let the_rest = Iter.drop(request.url.chars(), 8); // strip "https://"
+        let url = Text.fromIter(Iter.dropWhile<Char>(the_rest, func (c: Char) { c != '/' }));
         let header_part = method # "\n" # url # "\n" # headers_joined2;
 
         let result = List.empty<Nat8>();
@@ -159,9 +158,9 @@ module {
             ignore Map.insert(headers, Text.compare, "accept", ["*/*"]);
         };
         if (not Map.containsKey(headers, Text.compare, "host")) {
-            let the_rest = Itertools.skip(request.url.chars(), 8); // strip "https://"
+            let the_rest = Iter.drop(request.url.chars(), 8); // strip "https://"
             // We don't worry if request.url really starts with "https://" because it will be caught later.
-            let host = Itertools.takeWhile<Char>(the_rest, func (c: Char) { c != '/' });
+            let host = Iter.takeWhile<Char>(the_rest, func (c: Char) { c != '/' });
             // As test_port_443 test shows, port is included in default Host: iff it is included in the URL.
             // So, we don't need add/remove :443 to match config on server.
             ignore Map.insert(headers, Text.compare, "host", [Text.fromIter(host)]);
