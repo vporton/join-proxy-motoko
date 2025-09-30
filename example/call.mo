@@ -5,8 +5,8 @@ import Debug "mo:base/Debug";
 import Cycles "mo:base/ExperimentalCycles";
 import Iter "mo:base/Iter";
 
-actor HttpCaller {
-    stable let requestsChecker = Http.newHttpRequestsChecker();
+persistent actor HttpCaller {
+    let requestsChecker = Http.newHttpRequestsChecker();
 
     public shared func callHttp(
         request: Http.WrappedHttpRequest,
