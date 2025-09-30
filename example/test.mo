@@ -8,10 +8,10 @@ persistent actor Test {
         : async (Text, [{name: Text; value: Text}])
     {
         // Remark: As test_port_443 test shows, port is included in default Host: iff it is included in the URL.
-        let headers = [
-            ("Host", ["local.vporton.name" # port2]),
-            ("Content-Type", ["text/plain"]),
-            ("X-My", ["my"]),
+        let headers = [ // Header names must be lowercase.
+            ("host", ["local.vporton.name" # port2]),
+            ("content-type", ["text/plain"]),
+            ("x-my", ["my"]),
         ];
         let res = await Call.callHttp(
             {
