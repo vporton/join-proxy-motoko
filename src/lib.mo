@@ -149,7 +149,7 @@ module {
 
         // Some headers are added automatically, if missing. Provide them here, to match the hash:
         if (request.body != "") {
-            ignore Map.insert(headers, Text.compare, "content-length", [Nat.toText(Array.size(Blob.toArray(request.body)))]); // TODO: https://github.com/dfinity/motoko-base/issues/637
+            ignore Map.insert(headers, Text.compare, "content-length", [Nat.toText(Blob.size(request.body))]);
         };
         if (not Map.containsKey(headers, Text.compare, "user-agent")) {
             ignore Map.insert(headers, Text.compare, "user-agent", ["IC/for-Join-Proxy"]);
