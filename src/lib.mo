@@ -9,10 +9,10 @@ import Nat8 "mo:core/Nat8";
 import Nat32 "mo:core/Nat32";
 import Time "mo:core/Time";
 import Int "mo:core/Int";
-import BTree "mo:stableheapbtreemap/BTree";
 import Map "mo:core/Map";
 import Array "mo:core/Array";
 import Runtime "mo:core/Runtime";
+import Set "mo:core/Set";
 import xNum "mo:xtended-numbers/NatX";
 
 module {
@@ -63,30 +63,30 @@ module {
     };
 
     public type HttpRequestsChecker = {
-        hashes: BTree.BTree<Blob, Int>; // hash -> time
-        times: BTree.BTree<Int, BTree.BTree<Blob, ()>>;
+        hashes: Map.Map<Blob, Int>; // hash -> time
+        times: Map.Map<Int, Set.Set<Blob>>;
     };
 
     public func newHttpRequestsChecker(): HttpRequestsChecker {
         {
-            hashes = BTree.init(null);
-            times = BTree.init(null);
+            hashes = Map.empty();
+            times = Map.empty();
         }
     };
 
     private func deleteOldHttpRequests(checker: HttpRequestsChecker, params: {timeout: Nat}) {
         let threshold = Time.now() - params.timeout;
         label r loop {
-            let ?(minTime, hashes) = BTree.min(checker.times) else {
+            let ?(minTime, hashes) = Map.entries(checker.times).next() else {
                 break r;
             };
             if (minTime > threshold) {
                 break r;
             };
-            for ((hash, _) in BTree.entries(hashes)) {
-                ignore BTree.delete(checker.hashes, Blob.compare, hash);
+            for (hash in Set.values(hashes)) {
+                ignore Map.delete(checker.hashes, Blob.compare, hash);
             };
-            ignore BTree.delete(checker.times, Int.compare, minTime);
+            ignore Map.delete(checker.times, Int.compare, minTime);
         };
     };
 
@@ -94,16 +94,16 @@ module {
         deleteOldHttpRequests(checker, params);
 
         // If there is an old hash equal to this, first delete it to clean times:
-        switch (BTree.get(checker.hashes, Blob.compare, hash)) {
+        switch (Map.get(checker.hashes, Blob.compare, hash)) {
             case (?oldTime) {
-                let ?subtree = BTree.get(checker.times, Int.compare, oldTime) else {
+                let ?subtree = Map.get(checker.times, Int.compare, oldTime) else {
                     Runtime.trap("programming error: zero times");
                 };
-                ignore BTree.delete(checker.hashes, Blob.compare, hash);
-                if (BTree.size(subtree) == 1) {
-                    ignore BTree.delete(checker.times, Int.compare, oldTime);
+                ignore Map.delete(checker.hashes, Blob.compare, hash);
+                if (Set.size(subtree) == 1) {
+                    ignore Map.delete(checker.times, Int.compare, oldTime);
                 } else {
-                    ignore BTree.delete(subtree, Blob.compare, hash);
+                    ignore Set.delete(subtree, Blob.compare, hash);
                 };
             };
             case null {};
@@ -112,16 +112,16 @@ module {
         let now = Time.now();
 
         // Insert into two trees:
-        ignore BTree.insert(checker.hashes, Blob.compare, hash, now);
-        let subtree = switch (BTree.get(checker.times, Int.compare, now)) {
+        ignore Map.insert(checker.hashes, Blob.compare, hash, now);
+        let subtree = switch (Map.get(checker.times, Int.compare, now)) {
             case (?hashes) hashes;
             case (null) {
-                let hashes = BTree.init<Blob, ()>(null);
-                ignore BTree.insert(checker.times, Int.compare, now, hashes);
+                let hashes = Set.empty<Blob>();
+                ignore Map.insert(checker.times, Int.compare, now, hashes);
                 hashes;
             }
         };
-        ignore BTree.insert(subtree, Blob.compare, hash, ());
+        ignore Set.insert(subtree, Blob.compare, hash);
     };
 
     public func announceHttpRequest(checker: HttpRequestsChecker, request: HttpRequest, params: {timeout: Nat}) {
@@ -129,7 +129,7 @@ module {
     };
 
     public func checkHttpRequest(checker: HttpRequestsChecker, hash: Blob): Bool {
-        BTree.has(checker.hashes, Blob.compare, hash);
+        Map.containsKey(checker.hashes, Blob.compare, hash);
     };
 
     func headersToLowercase(headers: HttpHeaders) {

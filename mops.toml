@@ -16,6 +16,5 @@ license = "MIT"
 
 [dependencies]
 sha2 = "0.0.6"
-stableheapbtreemap = "1.5.0"
 xtended-numbers = "0.2.1"
 core = "1.0.0"
