@@ -148,7 +148,6 @@ module {
         
         headersToLowercase(headers);
 
-        Debug.print("headers: " # debug_show(Iter.toArray(Map.entries(headers))));
         // Some headers are added automatically, if missing. Provide them here, to match the hash:
         if (request.body != "") {
             ignore Map.insert(headers, Text.compare, "content-length", [Nat.toText(Blob.size(request.body))]);
